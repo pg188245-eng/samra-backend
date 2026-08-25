@@ -1,5 +1,9 @@
+const express = require('express');
+const http = require('http');
 const WebSocket = require('ws');
-const server = require('http').createServer();
+
+const app = express();
+const server = http.createServer(app);
 const wss = new WebSocket.Server({ server });
 
 const PORT = process.env.PORT || 8080;
@@ -7,11 +11,17 @@ const PORT = process.env.PORT || 8080;
 const userCounts = {}; 
 const clients = new Map(); // Connected users ki list
 
+// 1. Express ka HTTP route (Jab koi browser mein link khole ga toh yeh dikhega)
+app.get('/', (req, res) => {
+    res.send('Samra Backend Signaling Server is running successfully!');
+});
+
 // Render par WebSocket connection zinda rakhne ke liye Heartbeat function
 function heartbeat() {
     this.isAlive = true;
 }
 
+// 2. WebSocket Connection Logic
 wss.on('connection', (ws) => {
     ws.isAlive = true;
     ws.on('pong', heartbeat);
@@ -23,7 +33,7 @@ wss.on('connection', (ws) => {
         try {
             const data = JSON.parse(message);
 
-            // 1. User Registration Logic
+            // User Registration Logic
             if (data.type === 'REGISTER_NEW_USER') {
                 if (!data.baseName) {
                     ws.send(JSON.stringify({ type: 'ERROR', message: 'BaseName is required' }));
@@ -49,7 +59,7 @@ wss.on('connection', (ws) => {
                 console.log(`Registered successfully: ${currentUserId}`);
             }
 
-            // 2. WebRTC Signaling Logic (Offer / Answer / ICE Candidates)
+            // WebRTC Signaling Logic (Offer / Answer / ICE Candidates)
             if (data.type === 'SEND_SIGNAL') {
                 if (!data.targetId || !data.payload) return;
                 
@@ -77,7 +87,7 @@ wss.on('connection', (ws) => {
     });
 });
 
-// Har 30 seconds mein check karo kaunsa client zinda hai (Render ke liye zaroori)
+// Har 30 seconds mein check karo kaunsa client zinda hai
 const interval = setInterval(() => {
     wss.clients.forEach((ws) => {
         if (ws.isAlive === false) return ws.terminate();
@@ -90,7 +100,7 @@ wss.on('close', () => {
     clearInterval(interval);
 });
 
-// Server ko port par listen karwao
+// Server ko port par listen karwao (Express + HTTP + WebSocket ek sath)
 server.listen(PORT, () => {
-    console.log(`WebSocket Server started successfully on port: ${PORT}`);
+    console.log(`Server started successfully on port: ${PORT}`);
 });
