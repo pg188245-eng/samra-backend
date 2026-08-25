@@ -1,36 +1,46 @@
 const WebSocket = require('ws');
-const wss = new WebSocket.Server({ port: process.env.PORT || 8080 });
+const server = require('http').createServer();
+const wss = new WebSocket.Server({ server });
 
-// Ek chhota sa temporary database (RAM) jo naam aur unke count yaad rakhega
+const PORT = process.env.PORT || 8080;
+
 const userCounts = {}; 
-const clients = new Map(); // Connected users ko track karne ke liye (userId -> ws)
+const clients = new Map(); // Connected users ki list
+
+// Render par WebSocket connection zinda rakhne ke liye Heartbeat function
+function heartbeat() {
+    this.isAlive = true;
+}
 
 wss.on('connection', (ws) => {
+    ws.isAlive = true;
+    ws.on('pong', heartbeat);
+
     console.log('Ek naya client connect ho gaya hai!');
-    let currentUserId = null; // Is connection ki apni ID
+    let currentUserId = null;
 
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
-            // 1. Agar user NAYI ID banane ki request bhej raha hai
+            // 1. User Registration Logic
             if (data.type === 'REGISTER_NEW_USER') {
-                const baseName = (data.baseName || 'user').toLowerCase().trim(); // jaise "samra"
+                if (!data.baseName) {
+                    ws.send(JSON.stringify({ type: 'ERROR', message: 'BaseName is required' }));
+                    return;
+                }
+
+                const baseName = data.baseName.toLowerCase().trim();
                 
-                // Check karo yeh naam pehle kitni baar aa chuka hai
                 if (userCounts[baseName]) {
                     userCounts[baseName]++; 
                 } else {
                     userCounts[baseName] = 1; 
                 }
 
-                // Final ID banao (jaise "samra_2")
                 currentUserId = `${baseName}_${userCounts[baseName]}`;
-                
-                // Client ko Map mein save kar lo taaki baad mein message bhej sakein
                 clients.set(currentUserId, ws);
 
-                // User ko uski nayi ID wapas bhej do
                 ws.send(JSON.stringify({
                     type: 'REGISTRATION_SUCCESS',
                     finalId: currentUserId
@@ -39,9 +49,10 @@ wss.on('connection', (ws) => {
                 console.log(`Registered successfully: ${currentUserId}`);
             }
 
-            // 2. WebRTC Signaling ya baaki messages ke liye example:
-            // Agar aapko kisi specific user ko offer/answer bhejna ho:
+            // 2. WebRTC Signaling Logic (Offer / Answer / ICE Candidates)
             if (data.type === 'SEND_SIGNAL') {
+                if (!data.targetId || !data.payload) return;
+                
                 const targetSocket = clients.get(data.targetId);
                 if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
                     targetSocket.send(JSON.stringify({
@@ -60,10 +71,26 @@ wss.on('connection', (ws) => {
     // Jab user disconnect ho jaye
     ws.on('close', () => {
         if (currentUserId && clients.has(currentUserId)) {
-            clients.delete(currentUserId); // List se hata do
+            clients.delete(currentUserId);
             console.log(`Client disconnect ho gaya: ${currentUserId}`);
         }
     });
 });
 
-console.log("WebSocket Server started successfully on port:", process.env.PORT || 8080);
+// Har 30 seconds mein check karo kaunsa client zinda hai (Render ke liye zaroori)
+const interval = setInterval(() => {
+    wss.clients.forEach((ws) => {
+        if (ws.isAlive === false) return ws.terminate();
+        ws.isAlive = false;
+        ws.ping();
+    });
+}, 30000);
+
+wss.on('close', () => {
+    clearInterval(interval);
+});
+
+// Server ko port par listen karwao
+server.listen(PORT, () => {
+    console.log(`WebSocket Server started successfully on port: ${PORT}`);
+});
