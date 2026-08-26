@@ -51,9 +51,11 @@ wss.on('connection', (ws) => {
         }
     });
 
+    // 🌟 SAHI JAGAH: ws.on('close') yahan andar hona chahiye!
     // Jab user app band karde ya disconnect ho jaye
     ws.on('close', () => {
-        if (currentUserId && clients.has(currentUserId)) {
+        // NAYA LOGIC: Sirf tab delete karo jab map mein current socket hi maujood ho
+        if (currentUserId && clients.get(currentUserId) === ws) {
             clients.delete(currentUserId);
             console.log(`❌ User Disconnected: ${currentUserId}`);
         }
@@ -69,10 +71,11 @@ const interval = setInterval(() => {
     });
 }, 30000);
 
-ws.on('close', () => {
-        // 🌟 NAYA LOGIC: Sirf tab delete karo jab map mein current socket hi maujood ho
-        if (currentUserId && clients.get(currentUserId) === ws) {
-            clients.delete(currentUserId);
-            console.log(`❌ User Disconnected: ${currentUserId}`);
-        }
-    });
+// 🌟 SAHI JAGAH: Yeh wss (Double S - Server) hona chahiye, ws nahi!
+wss.on('close', () => {
+    clearInterval(interval);
+});
+
+server.listen(PORT, () => {
+    console.log(`Server started successfully on port: ${PORT}`);
+});
