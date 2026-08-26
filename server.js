@@ -69,10 +69,10 @@ const interval = setInterval(() => {
     });
 }, 30000);
 
-wss.on('close', () => {
-    clearInterval(interval);
-});
-
-server.listen(PORT, () => {
-    console.log(`Server started successfully on port: ${PORT}`);
-});
+ws.on('close', () => {
+        // 🌟 NAYA LOGIC: Sirf tab delete karo jab map mein current socket hi maujood ho
+        if (currentUserId && clients.get(currentUserId) === ws) {
+            clients.delete(currentUserId);
+            console.log(`❌ User Disconnected: ${currentUserId}`);
+        }
+    });
