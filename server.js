@@ -1,6 +1,7 @@
 const express = require('express');
 const http = require('http');
 const WebSocket = require('ws');
+const url = require('url');
 
 const app = express();
 const server = http.createServer(app);
@@ -15,21 +16,29 @@ app.get('/', (req, res) => {
 });
 
 // 2. WebSocket Connection Logic
-wss.on('connection', (ws) => {
+wss.on('connection', (ws, req) => {
     ws.isAlive = true;
     ws.on('pong', () => ws.isAlive = true);
     
     let currentUserId = null;
 
+    // 🌟 URL Query Parameters se automatic registration check karein
+    const parameters = url.parse(req.url, true);
+    if (parameters.query && parameters.query.userId) {
+        currentUserId = parameters.query.userId;
+        clients.set(currentUserId, ws);
+        console.log(`✅ User Registered via URL Query: ${currentUserId}`);
+    }
+
     ws.on('message', (message) => {
         try {
             const data = JSON.parse(message);
 
-            // 🌟 STEP A: Jab App connect ho toh apna User ID Register kare
+            // 🌟 STEP A: Agar message ke through register ho
             if (data.type === 'register') {
                 currentUserId = data.userId;
                 clients.set(currentUserId, ws);
-                console.log(`✅ User Registered: ${currentUserId}`);
+                console.log(`✅ User Registered via Message: ${currentUserId}`);
                 return;
             }
 
@@ -40,9 +49,9 @@ wss.on('connection', (ws) => {
                 // Agar target user online hai, toh usko exact wahi message bhej do
                 if (targetSocket && targetSocket.readyState === WebSocket.OPEN) {
                     targetSocket.send(message.toString());
-                    console.log(`📤 Message from ${data.senderId} forwarded to ${data.targetId}`);
+                    console.log(`📤 Message type '${data.type}' from ${data.senderId || 'Unknown'} forwarded to ${data.targetId}`);
                 } else {
-                    console.log(`⚠️ User ${data.targetId} is offline or not found.`);
+                    console.log(`⚠️ User ${data.targetId} is offline or not found in clients map.`);
                 }
             }
 
@@ -51,10 +60,8 @@ wss.on('connection', (ws) => {
         }
     });
 
-    // 🌟 SAHI JAGAH: ws.on('close') yahan andar hona chahiye!
     // Jab user app band karde ya disconnect ho jaye
     ws.on('close', () => {
-        // NAYA LOGIC: Sirf tab delete karo jab map mein current socket hi maujood ho
         if (currentUserId && clients.get(currentUserId) === ws) {
             clients.delete(currentUserId);
             console.log(`❌ User Disconnected: ${currentUserId}`);
@@ -71,8 +78,7 @@ const interval = setInterval(() => {
     });
 }, 30000);
 
-// 🌟 SAHI JAGAH: Yeh wss (Double S - Server) hona chahiye, ws nahi!
-wss.on('close', () => {
+server.on('close', () => {
     clearInterval(interval);
 });
 
